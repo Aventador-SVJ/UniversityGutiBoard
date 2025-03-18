@@ -80,10 +80,19 @@ async function loadPosts() {
     }
 }
 
-// ✅ いいねを送信
+// ✅ いいねを送信（1人1回まで）
 async function likePost(postId) {
-    await fetch(`/like/${postId}`, { method: "POST" });
-    loadPosts();
+    let response = await fetch(`/like/${postId}`, { 
+        method: "POST",
+        headers: { "User-Agent": navigator.userAgent }  // ユーザー識別用
+    });
+
+    let result = await response.json();
+    if (response.status !== 200) {
+        alert(result.error);  // すでにいいねしている場合はアラートを表示
+    } else {
+        loadPosts();  // 投稿一覧を再読み込み
+    }
 }
 
 // ✅ コメントの表示/非表示を切り替える
@@ -139,7 +148,41 @@ function toggleSort() {
     loadPosts();
 }
 
-// ✅ 開発者ツールの封鎖
+// ✅ 開発者ツールが開かれたかどうかをチェックする関数
+function detectDevTools() {
+    let devtools = false;
+    const threshold = 160; // 閾値（幅 or 高さの違い）
+
+    if (window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold) {
+        devtools = true;
+    }
+
+    return devtools;
+}
+
+// ✅ PCかスマホかを判定
+function isMobile() {
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+
+// ✅ 開発者ツールの封鎖（PCのみ）
+if (!isMobile()) {
+    setInterval(function () {
+        if (detectDevTools()) {
+            console.clear();
+            console.log("開発者ツールが検出されました。");
+            window.location.reload();
+        }
+    }, 2000);
+}
+
+// ✅ 右クリックメニューを無効化
+document.addEventListener("contextmenu", function(event) {
+    event.preventDefault();
+});
+
+// ✅ 開発者ツールのキーボードショートカットを無効化
 document.addEventListener('keydown', function(event) {
     if (
         event.key === "F12" || 
@@ -153,22 +196,6 @@ document.addEventListener('keydown', function(event) {
         event.preventDefault();
     }
 });
-
-// ✅ 右クリックメニューを無効化
-document.addEventListener("contextmenu", function(event) {
-    event.preventDefault();
-});
-
-// ✅ DevTools を開いたら即リロード
-setInterval(function () {
-    let widthDiff = window.outerWidth - window.innerWidth;
-    let heightDiff = window.outerHeight - window.innerHeight;
-    if (widthDiff > 200 || heightDiff > 200) {
-        console.clear();
-        console.log("開発者ツールが検出されました。");
-        window.location.reload();
-    }
-}, 1000);
 
 // ✅ コンソールをクリア（隠しスクリプトを防ぐ）
 setInterval(function () {
