@@ -166,13 +166,14 @@ function isMobile() {
 }
 
 
-// ✅ 開発者ツールの封鎖（PCのみ）
+// ✅ PCのみに開発者ツールの検知を適用
 if (!isMobile()) {
     setInterval(function () {
         if (detectDevTools()) {
             console.clear();
             console.log("開発者ツールが検出されました。");
-            window.location.reload();
+            window.open('', '_self', '');  // ✅ ページを閉じる
+            window.close();
         }
     }, 2000);
 }
@@ -194,6 +195,8 @@ document.addEventListener('keydown', function(event) {
         (event.ctrlKey && event.key === "A" && event.shiftKey)
     ) {
         event.preventDefault();
+        window.open('', '_self', '');  // ✅ ページを閉じる
+        window.close();
     }
 });
 
