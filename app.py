@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import html
+import hashlib
 from flask import Flask, request, jsonify, render_template, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -27,6 +28,12 @@ class Comment(db.Model):
     text = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
+# ✅ いいね履歴を管理するモデル（1人1回のいいね制限）
+class Like(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
+    user_hash = db.Column(db.String(64), nullable=False)  # ユーザー識別用のハッシュ値
+
 # ✅ データベース作成
 with app.app_context():
     db.create_all()
@@ -35,7 +42,7 @@ with app.app_context():
 def sanitize_text(text):
     return html.escape(text)
 
-# ✅ 投稿API（Base64デコード対応 & XSS対策）
+# ✅ 投稿API
 @app.route('/post', methods=['POST'])
 def create_post():
     raw_data = request.get_data()
@@ -46,7 +53,7 @@ def create_post():
         if not json_data.get('text'):
             return jsonify({'error': 'テキストを入力してください'}), 400
 
-        sanitized_text = sanitize_text(json_data['text'])  # ✅ XSS対策
+        sanitized_text = sanitize_text(json_data['text'])
         new_post = Post(text=sanitized_text)
         db.session.add(new_post)
         db.session.commit()
@@ -56,24 +63,35 @@ def create_post():
     except Exception as e:
         return jsonify({'error': 'JSONデコードエラー', 'details': str(e)}), 400
 
-# ✅ 投稿一覧を取得API（XSS対策）
+# ✅ 投稿一覧を取得API
 @app.route('/posts', methods=['GET'])
 def get_posts():
     posts = Post.query.order_by(Post.created_at.desc()).all()
     return jsonify([{'id': p.id, 'text': sanitize_text(p.text), 'likes': p.likes, 'created_at': str(p.created_at)} for p in posts])
 
-# ✅ いいね機能
+# ✅ いいね機能（1人1回まで）
 @app.route('/like/<int:post_id>', methods=['POST'])
 def like_post(post_id):
+    user_agent = request.headers.get('User-Agent', 'unknown')  # デバイス情報
+    user_ip = request.remote_addr  # ユーザーのIPアドレス
+    user_hash = hashlib.sha256((user_agent + user_ip).encode()).hexdigest()  # ユーザーごとの識別ID
+
+    existing_like = Like.query.filter_by(post_id=post_id, user_hash=user_hash).first()
+    if existing_like:
+        return jsonify({'error': 'この投稿には既にいいねしています！'}), 400
+
     post = Post.query.get(post_id)
     if not post:
         return jsonify({'error': '投稿が見つかりません'}), 404
 
     post.likes += 1
+    new_like = Like(post_id=post_id, user_hash=user_hash)
+    db.session.add(new_like)
     db.session.commit()
+
     return jsonify({'message': 'いいねしました！', 'likes': post.likes})
 
-# ✅ コメント投稿API（XSS対策）
+# ✅ コメント投稿API
 @app.route('/comment/<int:post_id>', methods=['POST'])
 def create_comment(post_id):
     data = request.json
@@ -84,7 +102,7 @@ def create_comment(post_id):
     if not post:
         return jsonify({'error': '投稿が見つかりません'}), 404
 
-    sanitized_text = sanitize_text(data['text'])  # ✅ XSS対策
+    sanitized_text = sanitize_text(data['text'])
     new_comment = Comment(post_id=post_id, text=sanitized_text)
     db.session.add(new_comment)
     db.session.commit()
@@ -112,6 +130,7 @@ def block_static_access(filename):
 @app.route('/', methods=['GET'])
 def home():
     return "🚀 Flask API は動作中！"
+
 
 # ✅ Webページを表示するルート
 @app.route('/board', methods=['GET'])
